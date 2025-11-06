@@ -3,9 +3,14 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
 import Index from "./pages/Index";
 import Ingest from "./pages/Ingest";
 import Review from "./pages/Review";
+import KnowledgeCenter from "./pages/KnowledgeCenter";
+import Training from "./pages/Training";
+import ApiTester from "./pages/ApiTester";
+import SchemaEditor from "./pages/SchemaEditor";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -17,10 +22,14 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/legacy" element={<Index />} />
           <Route path="/ingest" element={<Ingest />} />
           <Route path="/review/:documentId" element={<Review />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/knowledge" element={<KnowledgeCenter />} />
+          <Route path="/training" element={<Training />} />
+          <Route path="/api-tester" element={<ApiTester />} />
+          <Route path="/schema" element={<SchemaEditor />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
