@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBillParser } from "@/hooks/useBillParser";
@@ -22,6 +23,12 @@ const Index = () => {
           <p className="text-muted-foreground">
             Upload an Irish utility bill image to extract structured data
           </p>
+          <Button 
+            onClick={() => window.location.href = '/ingest'}
+            className="mt-4"
+          >
+            Try New AI Ingestion System →
+          </Button>
         </div>
 
         <Card>

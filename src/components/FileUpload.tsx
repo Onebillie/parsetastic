@@ -33,13 +33,13 @@ export const FileUpload = ({ onFileSelect, disabled, currentFile, isUploading }:
           {isUploading ? "Uploading..." : currentFile ? currentFile.name : "Drag and drop or click to upload"}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          Supports JPG, PNG, WEBP, PDF (max 20MB)
+          Supports JPG, PNG, WEBP, HEIC, PDF, and video files (max 20MB)
         </p>
       </div>
       <input
         id="file-input"
         type="file"
-        accept="image/jpeg,image/png,image/webp,application/pdf"
+        accept="image/jpeg,image/png,image/webp,image/heic,application/pdf,video/*"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

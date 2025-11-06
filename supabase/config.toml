@@ -1,1 +1,13 @@
 project_id = "unuapsdfzpxmmgnpffss"
+
+[functions.onebill-vision-parse]
+verify_jwt = false
+
+[functions.ingest-document]
+verify_jwt = false
+
+[functions.get-document]
+verify_jwt = false
+
+[functions.approve-document]
+verify_jwt = false

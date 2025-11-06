@@ -14,7 +14,184 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      document_corrections: {
+        Row: {
+          confidence_before: number | null
+          corrected_value: string
+          created_at: string | null
+          document_id: string
+          field_path: string
+          id: string
+          original_value: string | null
+        }
+        Insert: {
+          confidence_before?: number | null
+          corrected_value: string
+          created_at?: string | null
+          document_id: string
+          field_path: string
+          id?: string
+          original_value?: string | null
+        }
+        Update: {
+          confidence_before?: number | null
+          corrected_value?: string
+          created_at?: string | null
+          document_id?: string
+          field_path?: string
+          id?: string
+          original_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_corrections_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_frames: {
+        Row: {
+          created_at: string | null
+          document_id: string
+          frame_number: number
+          frame_url: string
+          id: string
+          timestamp_ms: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          document_id: string
+          frame_number: number
+          frame_url: string
+          id?: string
+          timestamp_ms?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          document_id?: string
+          frame_number?: number
+          frame_url?: string
+          id?: string
+          timestamp_ms?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_frames_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          approved: boolean | null
+          approved_at: string | null
+          classification_confidence: number | null
+          confidence_scores: Json | null
+          created_at: string | null
+          document_type: string | null
+          file_name: string
+          file_type: string
+          file_url: string
+          id: string
+          parsed_data: Json | null
+          phone_number: string
+          requires_review: boolean | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved?: boolean | null
+          approved_at?: string | null
+          classification_confidence?: number | null
+          confidence_scores?: Json | null
+          created_at?: string | null
+          document_type?: string | null
+          file_name: string
+          file_type: string
+          file_url: string
+          id?: string
+          parsed_data?: Json | null
+          phone_number: string
+          requires_review?: boolean | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved?: boolean | null
+          approved_at?: string | null
+          classification_confidence?: number | null
+          confidence_scores?: Json | null
+          created_at?: string | null
+          document_type?: string | null
+          file_name?: string
+          file_type?: string
+          file_url?: string
+          id?: string
+          parsed_data?: Json | null
+          phone_number?: string
+          requires_review?: boolean | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      training_examples: {
+        Row: {
+          created_at: string | null
+          document_type: string
+          example_data: Json
+          id: string
+          notes: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          document_type: string
+          example_data: Json
+          id?: string
+          notes?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          document_type?: string
+          example_data?: Json
+          id?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
+      webhooks: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          event_type: string
+          id: string
+          secret: string | null
+          url: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          event_type: string
+          id?: string
+          secret?: string | null
+          url: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          secret?: string | null
+          url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
