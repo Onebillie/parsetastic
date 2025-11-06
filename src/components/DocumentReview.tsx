@@ -24,7 +24,9 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchDocument();
+    if (documentId && documentId !== ':documentId') {
+      fetchDocument();
+    }
   }, [documentId]);
 
   const fetchDocument = async () => {

@@ -42,8 +42,11 @@ const ApiTester = () => {
       
       if (endpoint.startsWith("/documents/") && endpoint.includes("/approve")) {
         actualUrl = `${baseUrl}/functions/v1/approve-document`;
-      } else if (endpoint.startsWith("/documents/") && !endpoint.includes("/")) {
-        actualUrl = `${baseUrl}/functions/v1/get-document/${endpoint.split("/")[2]}`;
+      } else if (endpoint.startsWith("/documents/")) {
+        const docId = endpoint.split("/")[2];
+        if (docId && docId !== "{id}") {
+          actualUrl = `${baseUrl}/functions/v1/get-document/${docId}`;
+        }
       } else if (endpoint === "/ingest") {
         actualUrl = `${baseUrl}/functions/v1/ingest-document`;
       }
@@ -78,11 +81,9 @@ const ApiTester = () => {
       await supabase.from('api_test_requests').insert({
         endpoint,
         method,
-        headers: parsedHeaders,
         request_body: method !== "GET" ? JSON.parse(body) : null,
-        response_status: res.status,
         response_body: data,
-        response_time_ms: endTime - startTime,
+        status_code: res.status,
       });
 
       toast({
