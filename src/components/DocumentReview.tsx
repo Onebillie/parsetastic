@@ -234,10 +234,15 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
   }
 
   const bills = document.parsed_data?.bills || {};
-  const cusDetails = bills.cus_details?.[0];
-  const electricity = bills.electricity?.[0];
-  const gas = bills.gas?.[0];
-  const broadband = bills.broadband?.[0];
+  const extracted = document.parsed_data?.extracted || {};
+  const classification = document.parsed_data?.classification || {};
+  const validation = document.parsed_data?.validation || {};
+  
+  // Support both old and new structure
+  const cusDetails = bills.cus_details?.[0] || extracted.customer;
+  const electricity = bills.electricity?.[0] || extracted.electricity;
+  const gas = bills.gas?.[0] || extracted.gas;
+  const broadband = bills.broadband?.[0] || extracted.broadband;
   const scores = document.confidence_scores || {};
 
   return (

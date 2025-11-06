@@ -11,6 +11,7 @@ import KnowledgeCenter from "./pages/KnowledgeCenter";
 import Training from "./pages/Training";
 import ApiTester from "./pages/ApiTester";
 import SchemaEditor from "./pages/SchemaEditor";
+import ReviewQueue from "./pages/ReviewQueue";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/training" element={<Training />} />
           <Route path="/api-tester" element={<ApiTester />} />
           <Route path="/schema" element={<SchemaEditor />} />
+          <Route path="/queue" element={<ReviewQueue />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

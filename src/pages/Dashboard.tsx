@@ -1,13 +1,14 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Upload, FileText, Brain, TestTube, BookOpen, Code } from "lucide-react";
+import { Upload, FileText, Brain, TestTube, BookOpen, Code, Eye } from "lucide-react";
 
 const Dashboard = () => {
   const navigate = useNavigate();
 
   const modules = [
     { title: "Document Ingestion", desc: "Upload and process documents", icon: Upload, path: "/ingest" },
+    { title: "Review Queue", desc: "Approve pending documents", icon: Eye, path: "/queue" },
     { title: "Knowledge Center", desc: "Manage training materials", icon: BookOpen, path: "/knowledge" },
     { title: "Training & Learning", desc: "Monitor AI improvements", icon: Brain, path: "/training" },
     { title: "API Testing", desc: "Test and debug endpoints", icon: TestTube, path: "/api-tester" },

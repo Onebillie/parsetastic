@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.mcp-learn]
 verify_jwt = false
+
+[functions.list-documents]
+verify_jwt = false
