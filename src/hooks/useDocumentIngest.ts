@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { renderPdfFirstPageToBlob } from "@/lib/pdf-to-image";
 
 export interface IngestResult {
   success: boolean;
@@ -23,8 +24,34 @@ export const useDocumentIngest = () => {
     setResult(null);
 
     try {
+      // Convert PDF to high-res image for better OCR accuracy
+      let fileToUpload: File | Blob = file;
+      let uploadFileName = file.name;
+      
+      if (file.type === 'application/pdf') {
+        console.log('Converting PDF to high-resolution image...');
+        toast({
+          title: "Processing PDF",
+          description: "Converting to high-resolution image for better accuracy...",
+        });
+        
+        try {
+          const imageBlob = await renderPdfFirstPageToBlob(file, 2048); // High resolution
+          uploadFileName = file.name.replace('.pdf', '.png');
+          fileToUpload = new File(
+            [imageBlob], 
+            uploadFileName,
+            { type: 'image/png' }
+          );
+          console.log('PDF converted successfully:', uploadFileName);
+        } catch (conversionError) {
+          console.warn('PDF conversion failed, using original:', conversionError);
+          // Continue with original PDF if conversion fails
+        }
+      }
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', fileToUpload, uploadFileName);
       formData.append('phone', phone);
       formData.append('autopilot', autopilot.toString());
 

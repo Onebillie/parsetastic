@@ -190,12 +190,19 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const isPdf = file_type?.includes('pdf');
-    console.log(`Processing as ${isPdf ? 'PDF' : 'Image'}`);
+    const isImage = file_type?.includes('image') || file_type?.includes('png') || file_type?.includes('jpg') || file_type?.includes('jpeg');
     
-    // Prepare message content (GPT-5 handles PDFs natively with 'file' type)
-    const contentPart = isPdf 
-      ? { type: 'file', file: { url: file_url } }
-      : { type: 'image_url', image_url: { url: file_url, detail: 'high' } };
+    console.log(`Processing as ${isPdf ? 'PDF' : isImage ? 'Image' : 'Unknown'}`);
+    
+    // Note: GPT-5 API doesn't support direct PDF URL processing
+    // PDFs should be converted to images on client-side before upload
+    if (isPdf) {
+      console.warn('PDF received - GPT-5 requires file_id for PDFs. Client should convert to image first.');
+      throw new Error('PDF files must be converted to images before processing. Please convert PDF to high-resolution image on client-side.');
+    }
+    
+    // Prepare message content with high-detail image processing
+    const contentPart = { type: 'image_url', image_url: { url: file_url, detail: 'high' } };
     
     const messages: any[] = [
       {
