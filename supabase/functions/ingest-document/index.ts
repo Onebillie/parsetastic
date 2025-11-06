@@ -92,9 +92,9 @@ serve(async (req) => {
     
     const fileUrl = `${supabaseUrl}/storage/v1/object/public/bills/${fileName}`;
     
-    console.log(`Starting MCP pipeline for file: ${fileName}`);
+    console.log(`Starting optimized extraction pipeline for file: ${fileName}`);
     
-    // STEP 1: Parse document (extract text, tables, OCR)
+    // STEP 1: Direct extraction with GPT-5 (replaces parse + classify + extract)
     const parsed = await supabase.functions.invoke('mcp-parse', {
       body: { file_url: fileUrl, file_type: file.type }
     });
@@ -104,46 +104,21 @@ serve(async (req) => {
       throw new Error(`Parse failed: ${parsed.error.message}`);
     }
     
-    console.log('Parse complete, blocks:', parsed.data?.blocks?.length || 0);
+    const extractedData = parsed.data.extracted_data;
+    const classification = {
+      document_class: parsed.data.document_class,
+      document_subclass: parsed.data.document_subclass,
+      supplier_name: parsed.data.supplier_name,
+      confidence: extractedData.classification?.confidence || 1.0
+    };
     
-    // STEP 2: Classify document
-    const classified = await supabase.functions.invoke('mcp-classify', {
-      body: {
-        blocks: parsed.data.blocks,
-        tables: parsed.data.tables,
-        metadata: parsed.data.metadata
-      }
-    });
+    console.log('Direct extraction complete:', classification.document_subclass);
     
-    if (classified.error) {
-      console.error('Classification failed:', classified.error);
-      throw new Error(`Classification failed: ${classified.error.message}`);
-    }
-    
-    console.log('Classification:', classified.data);
-    
-    // STEP 3: Extract structured data with confidence scores
-    const extracted = await supabase.functions.invoke('mcp-extract', {
-      body: {
-        blocks: parsed.data.blocks,
-        tables: parsed.data.tables,
-        classification: classified.data,
-        template_hint: { supplier_name: classified.data.supplier_name }
-      }
-    });
-    
-    if (extracted.error) {
-      console.error('Extraction failed:', extracted.error);
-      throw new Error(`Extraction failed: ${extracted.error.message}`);
-    }
-    
-    console.log('Extraction complete');
-    
-    // STEP 4: Validate extracted data
+    // STEP 2: Validate extracted data
     const validated = await supabase.functions.invoke('mcp-validate', {
       body: {
-        extracted_data: extracted.data,
-        classification: classified.data
+        extracted_data: extractedData,
+        classification: classification
       }
     });
     
@@ -152,18 +127,38 @@ serve(async (req) => {
       throw new Error(`Validation failed: ${validated.error.message}`);
     }
     
-    console.log('Validation complete, overall confidence:', validated.data.overall_confidence);
+    console.log('Validation complete');
     
     // Calculate overall confidence as MINIMUM of all field confidences
-    const overallConfidence = calculateOverallConfidence(extracted.data);
+    const overallConfidence = calculateOverallConfidence(extractedData);
     
-    // HITL threshold: requires review if ANY field has confidence < 0.90 OR if autopilot is disabled
-    const confidenceThreshold = 0.90;
-    const requiresReview = overallConfidence < confidenceThreshold || !autopilot || validated.data.hitl_required;
+    // Strict HITL thresholds
+    const CRITICAL_THRESHOLD = 0.995;
+    const IMPORTANT_THRESHOLD = 0.98;
+    const OVERALL_THRESHOLD = 0.90;
     
-    console.log(`Confidence: ${overallConfidence}, Threshold: ${confidenceThreshold}, Requires Review: ${requiresReview}`);
+    // Check critical fields
+    const criticalFields = [
+      extractedData.payment_details?.total_amount_due_conf,
+      extractedData.supplier_details?.due_date_conf,
+      extractedData.customer_details?.account_number_conf,
+      extractedData.electricity_bill?.mprn_conf,
+      extractedData.gas_bill?.gprn_conf,
+    ].filter(c => c !== undefined && c !== null);
     
-    // Create document record with full pipeline results
+    const criticalFieldsLow = criticalFields.some(c => c < CRITICAL_THRESHOLD);
+    
+    // Determine if review is needed
+    const requiresReview = 
+      criticalFieldsLow ||
+      overallConfidence < OVERALL_THRESHOLD || 
+      !autopilot || 
+      validated.data.hitl_required ||
+      validated.data.status === 'failed';
+    
+    console.log(`Confidence: ${overallConfidence}, Threshold: ${OVERALL_THRESHOLD}, Requires Review: ${requiresReview}`);
+    
+    // Create document record with optimized pipeline results
     const { data: document, error: docError } = await supabase
       .from('documents')
       .insert({
@@ -172,15 +167,17 @@ serve(async (req) => {
         file_url: fileUrl,
         phone_number: phone,
         status: requiresReview ? 'pending_review' : 'approved',
-        document_type: classified.data.document_subclass || classified.data.document_class,
+        document_type: classification.document_subclass || classification.document_class,
         classification_confidence: overallConfidence,
         parsed_data: {
-          raw_parse: parsed.data,
-          classification: classified.data,
-          extracted: extracted.data,
+          classification: classification,
+          extracted: extractedData,
           validation: validated.data,
         },
-        confidence_scores: { overall: overallConfidence },
+        confidence_scores: { 
+          overall: overallConfidence,
+          critical_fields_ok: !criticalFieldsLow 
+        },
         requires_review: requiresReview,
         approved: !requiresReview && autopilot,
         approved_at: !requiresReview && autopilot ? new Date().toISOString() : null,
@@ -196,8 +193,8 @@ serve(async (req) => {
     await triggerWebhook(supabase, 'document.created', {
       document_id: document.id,
       file_name: file.name,
-      document_type: classified.data.document_subclass,
-      supplier: classified.data.supplier_name,
+      document_type: classification.document_subclass,
+      supplier: classification.supplier_name,
       requires_review: requiresReview,
       overall_confidence: overallConfidence,
     });
@@ -220,11 +217,11 @@ serve(async (req) => {
       success: true,
       document_id: document.id,
       requires_review: requiresReview,
-      classification: classified.data,
+      classification: classification,
       overall_confidence: overallConfidence,
       validation: validated.data,
       file_url: fileUrl,
-      extracted_data: extracted.data,
+      extracted_data: extractedData,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

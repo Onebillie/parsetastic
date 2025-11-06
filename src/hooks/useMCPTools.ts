@@ -19,32 +19,6 @@ export const useMCPTools = () => {
     }
   };
 
-  const classify = async (blocks: any[], tables: any[], metadata: any) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('mcp-classify', {
-        body: { blocks, tables, metadata }
-      });
-      if (error) throw error;
-      return data;
-    } catch (error: any) {
-      toast({ title: "Classification failed", description: error.message, variant: "destructive" });
-      throw error;
-    }
-  };
-
-  const extract = async (blocks: any[], tables: any[], classification: any, template_hint?: any) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('mcp-extract', {
-        body: { blocks, tables, classification, template_hint }
-      });
-      if (error) throw error;
-      return data;
-    } catch (error: any) {
-      toast({ title: "Extraction failed", description: error.message, variant: "destructive" });
-      throw error;
-    }
-  };
-
   const validate = async (extracted_data: any, classification: any) => {
     try {
       const { data, error } = await supabase.functions.invoke('mcp-validate', {
@@ -74,27 +48,22 @@ export const useMCPTools = () => {
   const runFullPipeline = async (file_url: string, file_type: string) => {
     setLoading(true);
     try {
-      // Step 1: Parse
+      // Step 1: Direct extraction with GPT-5
       const parsed = await parse(file_url, file_type);
       
-      // Step 2: Classify
-      const classification = await classify(parsed.blocks, parsed.tables, parsed.metadata);
+      const extractedData = parsed.extracted_data;
+      const classification = {
+        document_class: parsed.document_class,
+        document_subclass: parsed.document_subclass,
+        supplier_name: parsed.supplier_name,
+      };
       
-      // Step 3: Extract
-      const extracted = await extract(
-        parsed.blocks,
-        parsed.tables,
-        classification,
-        { supplier_name: classification.supplier_name }
-      );
-      
-      // Step 4: Validate
-      const validation = await validate(extracted, classification);
+      // Step 2: Validate
+      const validation = await validate(extractedData, classification);
       
       return {
-        parsed,
         classification,
-        extracted,
+        extracted: extractedData,
         validation,
       };
     } catch (error) {
@@ -107,8 +76,6 @@ export const useMCPTools = () => {
   return {
     loading,
     parse,
-    classify,
-    extract,
     validate,
     learn,
     runFullPipeline,
