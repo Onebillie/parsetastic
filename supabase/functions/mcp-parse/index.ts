@@ -164,27 +164,35 @@ FIELD RULES:
 - MPRN: 10 digits starting with "10"
 - GPRN: 7 digits
 - Time bands: standard, day, night, peak, ev, nightboost, export
-- Extract EVERY field, use null if not found`;
+- Extract EVERY field, use null if not found
+
+CRITICAL: Be meticulous with numbers, dates, and identifiers. These are financial documents.`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
     const { file_url, file_type } = await req.json();
+    console.log(`[${new Date().toISOString()}] Starting parse:`, { file_type, url_length: file_url?.length });
 
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-    if (!lovableApiKey) throw new Error('LOVABLE_API_KEY not configured');
+    if (!lovableApiKey) {
+      console.error('LOVABLE_API_KEY not configured');
+      throw new Error('LOVABLE_API_KEY not configured');
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`Direct extraction with GPT-5: ${file_url}`);
-
     const isPdf = file_type?.includes('pdf');
+    console.log(`Processing as ${isPdf ? 'PDF' : 'Image'}`);
     
+    // Prepare messages with high-detail image processing
     const messages: any[] = [
       {
         role: 'system',
@@ -200,6 +208,9 @@ serve(async (req) => {
         ]
       }
     ];
+
+    console.log('Calling GPT-5 for extraction...');
+    const aiStart = Date.now();
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -223,32 +234,81 @@ serve(async (req) => {
       }),
     });
 
+    const aiDuration = Date.now() - aiStart;
+    console.log(`GPT-5 responded in ${aiDuration}ms`);
+
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('GPT-5 error:', aiResponse.status, errorText);
-      throw new Error(`GPT-5 failed: ${aiResponse.status}`);
+      console.error('GPT-5 error:', aiResponse.status, errorText.slice(0, 500));
+      
+      if (aiResponse.status === 429) {
+        return new Response(JSON.stringify({ 
+          error: 'Rate limit exceeded. Please try again later.',
+          details: 'Too many requests to AI service'
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (aiResponse.status === 402) {
+        return new Response(JSON.stringify({ 
+          error: 'Payment required. Please add credits to your Lovable AI workspace.',
+          details: 'AI service credits exhausted'
+        }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      throw new Error(`GPT-5 failed: ${aiResponse.status} - ${errorText.slice(0, 200)}`);
     }
 
     const aiData = await aiResponse.json();
+    console.log('AI response structure:', {
+      hasChoices: !!aiData.choices,
+      choicesLength: aiData.choices?.length,
+      hasToolCalls: !!aiData.choices?.[0]?.message?.tool_calls,
+      toolCallsCount: aiData.choices?.[0]?.message?.tool_calls?.length
+    });
+
     const toolCalls = aiData.choices?.[0]?.message?.tool_calls;
     
-    if (!toolCalls?.[0]) throw new Error('No extraction result');
+    if (!toolCalls?.[0]) {
+      console.error('No tool calls in response:', JSON.stringify(aiData, null, 2).slice(0, 1000));
+      throw new Error('AI did not return structured extraction data');
+    }
     
     const extractedData = JSON.parse(toolCalls[0].function.arguments);
     
-    console.log('GPT-5 extraction complete');
+    console.log('Extraction complete:', {
+      supplier: extractedData.supplier_details?.supplier_name || 'Unknown',
+      docClass: extractedData.classification?.document_class || 'unknown',
+      customer: extractedData.customer_details?.customer_name || 'Unknown',
+      totalDue: extractedData.payment_details?.total_amount_due
+    });
+
+    const totalDuration = Date.now() - startTime;
+    console.log(`Total parse duration: ${totalDuration}ms`);
     
     return new Response(JSON.stringify({
       extracted_data: extractedData,
       supplier_name: extractedData.supplier_details?.supplier_name,
       document_class: extractedData.classification?.document_class,
       document_subclass: extractedData.classification?.document_subclass,
+      processing_time_ms: totalDuration
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
-    console.error('Parse error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const totalDuration = Date.now() - startTime;
+    console.error(`[${new Date().toISOString()}] Parse error after ${totalDuration}ms:`, error);
+    console.error('Error stack:', error.stack);
+    
+    return new Response(JSON.stringify({ 
+      error: error.message || 'Unknown parsing error',
+      details: 'Failed to extract data from document',
+      processing_time_ms: totalDuration
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

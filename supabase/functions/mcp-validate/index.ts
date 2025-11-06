@@ -12,16 +12,51 @@ serve(async (req) => {
 
   try {
     const { extracted_data, classification } = await req.json();
+    console.log('Starting validation for:', classification?.document_class || 'unknown');
 
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     if (!lovableApiKey) throw new Error('LOVABLE_API_KEY not configured');
 
-    const systemPrompt = `You are a validation expert for utility bill data.
+    const validationSchema = {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["passed", "failed", "warning"] },
+        overall_confidence: { type: "number", minimum: 0, maximum: 1 },
+        issues: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              field: { type: "string" },
+              code: { type: "string" },
+              message: { type: "string" },
+              severity: { type: "string", enum: ["error", "warning"] },
+              current_value: { type: "string" },
+              expected: { type: "string" }
+            },
+            required: ["field", "code", "message", "severity"]
+          }
+        },
+        reconciliation: {
+          type: "object",
+          properties: {
+            arithmetics_ok: { type: "boolean" },
+            details: { type: "string" }
+          },
+          required: ["arithmetics_ok", "details"]
+        },
+        hitl_required: { type: "boolean" },
+        hitl_reasons: { type: "array", items: { type: "string" } }
+      },
+      required: ["status", "overall_confidence", "issues", "hitl_required"]
+    };
+
+    const systemPrompt = `You are a validation expert for Irish utility bills. Perform comprehensive validation checks.
 
 VALIDATION RULES:
 1. Arithmetic checks:
    - unit_charges + standing_charges + levies - discounts - credits + VAT = total_amount (±€0.01)
-   - For each register: (curr_read - prev_read) × multiplier = units_used
+   - For electricity: (current_reading - previous_reading) × multiplier = units_used
    
 2. Date validations:
    - bill_due_date >= bill_issue_date
@@ -31,12 +66,12 @@ VALIDATION RULES:
 3. Identifier validations:
    - MPRN: 10 digits, starts with "10"
    - GPRN: 7 digits
-   - IBAN: valid checksum (Ireland IE format)
+   - IBAN: valid format (Ireland IE)
    - VAT rate: 9%, 13.5%, or 23%
    
-4. MCC consistency:
-   - MCC01: only "standard" register, no day/night/peak
-   - MCC02: must have "day" and "night", no peak/ev
+4. MCC consistency (electricity):
+   - MCC01: only "standard" register
+   - MCC02: must have "day" and "night"
    - MCC12: can have day/night/peak/ev
    
 5. Confidence thresholds:
@@ -44,27 +79,7 @@ VALIDATION RULES:
    - Important fields (usage, rates): >= 0.98
    - Overall document: >= 0.99 for auto-approve
 
-Return JSON:
-{
-  "status": "passed|failed|warning",
-  "overall_confidence": 0.0-1.0,
-  "issues": [
-    {
-      "field": "jsonpath to field",
-      "code": "error_code",
-      "message": "Human readable message",
-      "severity": "error|warning",
-      "current_value": "value",
-      "expected": "expected value or rule"
-    }
-  ],
-  "reconciliation": {
-    "arithmetics_ok": true|false,
-    "details": "explanation"
-  },
-  "hitl_required": true|false,
-  "hitl_reasons": ["reason1", "reason2"]
-}`;
+Return detailed validation results.`;
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -78,15 +93,20 @@ Return JSON:
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Validate this extracted ${classification.document_class} data:
-
-${JSON.stringify(extracted_data, null, 2)}
-
-Check all arithmetic, date logic, identifier formats, and confidence thresholds. Flag any issues.`
+            content: `Validate this extracted ${classification?.document_class || 'utility bill'} data:\n\n${JSON.stringify(extracted_data, null, 2)}`
           }
         ],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 4000
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'validate_utility_bill',
+              description: 'Return validation results for utility bill data',
+              parameters: validationSchema
+            }
+          }
+        ],
+        tool_choice: { type: 'function', function: { name: 'validate_utility_bill' } }
       }),
     });
 
@@ -107,19 +127,82 @@ Check all arithmetic, date logic, identifier formats, and confidence thresholds.
         });
       }
       
-      throw new Error(`AI validation failed: ${aiResponse.status}`);
+      // Return fallback validation on AI error
+      console.log('Returning fallback validation due to AI error');
+      return new Response(JSON.stringify({
+        status: 'warning',
+        overall_confidence: 0.5,
+        issues: [{ 
+          field: 'validation', 
+          code: 'AI_VALIDATION_FAILED', 
+          message: 'AI validation service unavailable',
+          severity: 'warning'
+        }],
+        hitl_required: true,
+        hitl_reasons: ['AI validation failed, manual review required']
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const aiData = await aiResponse.json();
-    const validation = JSON.parse(aiData.choices[0].message.content);
+    console.log('AI response structure:', {
+      hasChoices: !!aiData.choices,
+      choicesLength: aiData.choices?.length,
+      hasToolCalls: !!aiData.choices?.[0]?.message?.tool_calls
+    });
+
+    // Extract validation from function call
+    const toolCalls = aiData.choices?.[0]?.message?.tool_calls;
+    if (!toolCalls || toolCalls.length === 0) {
+      console.error('No tool calls in AI response:', JSON.stringify(aiData, null, 2).slice(0, 500));
+      
+      // Return fallback validation
+      return new Response(JSON.stringify({
+        status: 'warning',
+        overall_confidence: 0.7,
+        issues: [{ 
+          field: 'validation', 
+          code: 'INCOMPLETE_VALIDATION', 
+          message: 'AI did not return structured validation',
+          severity: 'warning'
+        }],
+        hitl_required: true,
+        hitl_reasons: ['Incomplete validation, manual review required']
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const validation = JSON.parse(toolCalls[0].function.arguments);
+    console.log('Validation complete:', {
+      status: validation.status,
+      confidence: validation.overall_confidence,
+      issuesCount: validation.issues?.length || 0,
+      hitlRequired: validation.hitl_required
+    });
 
     return new Response(JSON.stringify(validation), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
     console.error('MCP Validate error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
+    console.error('Error stack:', error.stack);
+    
+    // Return fallback validation on critical error
+    return new Response(JSON.stringify({
+      status: 'failed',
+      overall_confidence: 0.0,
+      issues: [{ 
+        field: 'system', 
+        code: 'VALIDATION_ERROR', 
+        message: error.message || 'Unknown validation error',
+        severity: 'error'
+      }],
+      hitl_required: true,
+      hitl_reasons: ['System error during validation']
+    }), {
+      status: 200, // Return 200 so ingestion can continue
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
