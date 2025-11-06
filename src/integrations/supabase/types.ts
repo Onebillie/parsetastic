@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_test_requests: {
+        Row: {
+          created_at: string | null
+          endpoint: string
+          id: string
+          method: string
+          request_body: Json | null
+          response_body: Json | null
+          status_code: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          method: string
+          request_body?: Json | null
+          response_body?: Json | null
+          status_code?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          method?: string
+          request_body?: Json | null
+          response_body?: Json | null
+          status_code?: number | null
+        }
+        Relationships: []
+      }
       document_corrections: {
         Row: {
           confidence_before: number | null
@@ -138,6 +168,99 @@ export type Database = {
           requires_review?: boolean | null
           status?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      json_schema_versions: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          schema_definition: Json
+          version: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          schema_definition: Json
+          version: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          schema_definition?: Json
+          version?: string
+        }
+        Relationships: []
+      }
+      knowledge_documents: {
+        Row: {
+          category: string
+          created_at: string | null
+          file_type: string
+          file_url: string
+          id: string
+          metadata: Json | null
+          subcategory: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          file_type: string
+          file_url: string
+          id?: string
+          metadata?: Json | null
+          subcategory?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          file_type?: string
+          file_url?: string
+          id?: string
+          metadata?: Json | null
+          subcategory?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      supplier_templates: {
+        Row: {
+          accuracy_stats: Json | null
+          created_at: string | null
+          document_type: string
+          id: string
+          last_updated: string | null
+          supplier_name: string
+          template_data: Json
+        }
+        Insert: {
+          accuracy_stats?: Json | null
+          created_at?: string | null
+          document_type: string
+          id?: string
+          last_updated?: string | null
+          supplier_name: string
+          template_data: Json
+        }
+        Update: {
+          accuracy_stats?: Json | null
+          created_at?: string | null
+          document_type?: string
+          id?: string
+          last_updated?: string | null
+          supplier_name?: string
+          template_data?: Json
         }
         Relationships: []
       }
