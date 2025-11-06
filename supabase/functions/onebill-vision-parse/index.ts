@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// DEPRECATED: This function is kept for backward compatibility only.
+// New implementations should use the MCP pipeline via ingest-document endpoint.
+// This endpoint now simply calls the legacy OneBill API for compatibility.
+
 // Helper to get visual inputs for AI - tries direct URL first, falls back to conversion
 async function getVisualInputs(fileUrl: string, isPdf: boolean): Promise<{ urls: string[], usedConversion: boolean }> {
   if (!isPdf) {
