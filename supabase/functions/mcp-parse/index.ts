@@ -193,6 +193,7 @@ serve(async (req) => {
     console.log(`Processing as ${isPdf ? 'PDF' : 'Image'}`);
     
     // Prepare messages with high-detail image processing
+    // Note: GPT-5 uses 'file' type for PDFs, not 'document'
     const messages: any[] = [
       {
         role: 'system',
@@ -202,7 +203,7 @@ serve(async (req) => {
         role: 'user',
         content: [
           isPdf 
-            ? { type: 'document', document: { url: file_url } }
+            ? { type: 'file', file: { url: file_url } }
             : { type: 'image_url', image_url: { url: file_url, detail: 'high' } },
           { type: 'text', text: 'Extract all fields with confidence scores using extract_utility_bill function.' }
         ]
