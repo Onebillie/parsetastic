@@ -1,13 +1,26 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// Function to fetch active schema from database
+const getActiveSchema = async (supabaseClient: any) => {
+  const { data, error } = await supabaseClient
+    .from('json_schema_versions')
+    .select('schema_definition')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    console.log('Using default schema (no active schema found in DB)');
+    return getDefaultSchema();
+  }
+
+  console.log('Loaded active schema from database');
+  return data.schema_definition;
 };
 
-// Complete schema for direct extraction with GPT-5
-const FULL_EXTRACTION_SCHEMA = {
+const getDefaultSchema = () => ({
   type: "object",
   properties: {
     customer_details: {
@@ -182,7 +195,13 @@ const FULL_EXTRACTION_SCHEMA = {
     },
   },
   required: ["customer_details", "supplier_details", "classification", "payment_details"],
+});
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
 
 const PARSE_PROMPT = `Extract ALL fields from this Irish utility bill with maximum accuracy. Provide confidence scores (0.0-1.0) for EVERY field.
 
@@ -241,6 +260,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Fetch the active schema from database
+    const FULL_EXTRACTION_SCHEMA = await getActiveSchema(supabase);
 
     let imageUrls: string[] = [];
     
