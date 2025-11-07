@@ -531,6 +531,30 @@ serve(async (req) => {
     
     console.log(`Document created: ${document.id}, status: ${document.status}`);
     
+    // Persist PDF pages as document_frames if multipage
+    if (isMultipage && pageUrls) {
+      try {
+        const urls = JSON.parse(pageUrls as string) as string[];
+        if (Array.isArray(urls) && urls.length > 0) {
+          const framesPayload = urls.map((url, idx) => ({
+            document_id: document.id,
+            frame_number: idx + 1,
+            frame_url: url,
+          }));
+          const { error: framesError } = await supabase
+            .from('document_frames')
+            .insert(framesPayload);
+          if (framesError) {
+            console.error('Error inserting document frames:', framesError);
+          } else {
+            console.log(`Inserted ${urls.length} frames for document ${document.id}`);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse/insert page_urls:', e);
+      }
+    }
+    
     // Trigger webhooks
     await triggerWebhook(supabase, 'document.created', {
       document_id: document.id,

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, AlertCircle, Edit2, Save, ChevronDown, ChevronRight } from "lucide-react";
+import { CheckCircle, AlertCircle, Edit2, Save, ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface DocumentReviewProps {
@@ -21,6 +21,7 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
   const [editing, setEditing] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [pageIndex, setPageIndex] = useState(0);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -274,12 +275,55 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
           </div>
         </CardHeader>
         <CardContent>
-          <div className="bg-muted rounded-lg aspect-[3/4] flex items-center justify-center">
-            <img
-              src={document.file_url}
-              alt="Document"
-              className="max-w-full max-h-full object-contain"
-            />
+          <div className="flex flex-col gap-2">
+            <div className="bg-muted rounded-lg aspect-[3/4] flex items-center justify-center overflow-hidden">
+              {document.frames && document.frames.length > 0 ? (
+                <img
+                  src={document.frames[pageIndex]?.frame_url || document.file_url}
+                  alt={`Page ${pageIndex + 1}`}
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : document.file_url?.toLowerCase().endsWith('.pdf') ? (
+                <object 
+                  data={document.file_url} 
+                  type="application/pdf" 
+                  className="w-full h-[70vh] rounded"
+                >
+                  <p className="text-sm text-muted-foreground">PDF preview not available</p>
+                </object>
+              ) : (
+                <img
+                  src={document.file_url}
+                  alt="Document"
+                  className="max-w-full max-h-full object-contain"
+                />
+              )}
+            </div>
+            {document.frames && document.frames.length > 1 && (
+              <div className="flex items-center justify-between gap-2">
+                <Button 
+                  size="sm" 
+                  variant="secondary" 
+                  onClick={() => setPageIndex(i => Math.max(0, i - 1))} 
+                  disabled={pageIndex === 0}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Prev
+                </Button>
+                <span className="text-sm text-muted-foreground font-medium">
+                  Page {pageIndex + 1} of {document.frames.length}
+                </span>
+                <Button 
+                  size="sm" 
+                  variant="secondary" 
+                  onClick={() => setPageIndex(i => Math.min(document.frames.length - 1, i + 1))} 
+                  disabled={pageIndex === document.frames.length - 1}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
