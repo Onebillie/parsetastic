@@ -177,7 +177,13 @@ serve(async (req) => {
 
   try {
     const { file_url, file_type } = await req.json();
-    console.log(`[${new Date().toISOString()}] Starting parse:`, { file_type, url_length: file_url?.length });
+    const pageUrlsParam = req.headers.get('x-page-urls');
+    
+    console.log(`[${new Date().toISOString()}] Starting parse:`, { 
+      file_type, 
+      url_length: file_url?.length,
+      has_page_urls: !!pageUrlsParam
+    });
 
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     if (!lovableApiKey) {
@@ -189,20 +195,35 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const isPdf = file_type?.includes('pdf');
-    const isImage = file_type?.includes('image') || file_type?.includes('png') || file_type?.includes('jpg') || file_type?.includes('jpeg');
+    let imageUrls: string[] = [];
     
-    console.log(`Processing as ${isPdf ? 'PDF' : isImage ? 'Image' : 'Unknown'}`);
-    
-    // Note: GPT-5 API doesn't support direct PDF URL processing
-    // PDFs should be converted to images on client-side before upload
-    if (isPdf) {
-      console.warn('PDF received - GPT-5 requires file_id for PDFs. Client should convert to image first.');
-      throw new Error('PDF files must be converted to images before processing. Please convert PDF to high-resolution image on client-side.');
+    if (pageUrlsParam) {
+      // Multiple pages uploaded
+      imageUrls = JSON.parse(pageUrlsParam);
+      console.log(`Processing ${imageUrls.length} pages together as one document`);
+    } else {
+      // Single image
+      const isPdf = file_type?.includes('pdf');
+      
+      if (isPdf) {
+        console.warn('PDF received - should be converted to images on client-side.');
+        throw new Error('PDF files must be converted to images before processing.');
+      }
+      
+      imageUrls = [file_url];
     }
     
-    // Prepare message content with high-detail image processing
-    const contentPart = { type: 'image_url', image_url: { url: file_url, detail: 'high' } };
+    // Build content array with ALL images
+    const contentParts: any[] = imageUrls.map(url => ({
+      type: 'image_url',
+      image_url: { url, detail: 'high' }
+    }));
+    
+    // Add text instruction at the end
+    contentParts.push({
+      type: 'text',
+      text: `Extract all fields from this ${imageUrls.length}-page document with confidence scores using extract_utility_bill function. Treat all pages as a single document.`
+    });
     
     const messages: any[] = [
       {
@@ -211,10 +232,7 @@ serve(async (req) => {
       },
       {
         role: 'user',
-        content: [
-          contentPart,
-          { type: 'text', text: 'Extract all fields with confidence scores using extract_utility_bill function.' }
-        ]
+        content: contentParts
       }
     ];
 

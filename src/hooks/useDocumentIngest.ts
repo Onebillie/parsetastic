@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { renderPdfFirstPageToBlob } from "@/lib/pdf-to-image";
+import { renderAllPdfPagesToBlobs } from "@/lib/pdf-to-image";
 
 export interface IngestResult {
   success: boolean;
@@ -24,33 +24,57 @@ export const useDocumentIngest = () => {
     setResult(null);
 
     try {
+      const formData = new FormData();
+      
       // Convert PDF to high-res image for better OCR accuracy
       let fileToUpload: File | Blob = file;
       let uploadFileName = file.name;
       
       if (file.type === 'application/pdf') {
-        console.log('Converting PDF to high-resolution image...');
+        console.log('Converting PDF to high-resolution images...');
         toast({
           title: "Processing PDF",
-          description: "Converting to high-resolution image for better accuracy...",
+          description: "Converting all pages to high-resolution images...",
         });
         
         try {
-          const imageBlob = await renderPdfFirstPageToBlob(file, 2048); // High resolution
-          uploadFileName = file.name.replace('.pdf', '.png');
-          fileToUpload = new File(
-            [imageBlob], 
-            uploadFileName,
-            { type: 'image/png' }
-          );
-          console.log('PDF converted successfully:', uploadFileName);
+          const imageBlobs = await renderAllPdfPagesToBlobs(file, 2048);
+          console.log(`Converted ${imageBlobs.length} pages`);
+          
+          toast({
+            title: "Uploading Pages",
+            description: `Uploading ${imageBlobs.length} pages to storage...`,
+          });
+          
+          const uploadedUrls: string[] = [];
+          
+          for (let i = 0; i < imageBlobs.length; i++) {
+            const pageFileName = file.name.replace('.pdf', `-page-${i + 1}.png`);
+            const pageFile = new File([imageBlobs[i]], pageFileName, { type: 'image/png' });
+            
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('bills-converted')
+              .upload(`${Date.now()}-${pageFileName}`, pageFile);
+            
+            if (uploadError) throw uploadError;
+            
+            const { data: urlData } = supabase.storage
+              .from('bills-converted')
+              .getPublicUrl(uploadData.path);
+            
+            uploadedUrls.push(urlData.publicUrl);
+          }
+          
+          formData.append('page_urls', JSON.stringify(uploadedUrls));
+          formData.append('is_multipage', 'true');
+          
+          console.log('All pages uploaded successfully');
         } catch (conversionError) {
           console.warn('PDF conversion failed, using original:', conversionError);
           // Continue with original PDF if conversion fails
         }
       }
 
-      const formData = new FormData();
       formData.append('file', fileToUpload, uploadFileName);
       formData.append('phone', phone);
       formData.append('autopilot', autopilot.toString());

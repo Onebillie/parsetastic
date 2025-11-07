@@ -34,3 +34,39 @@ export async function renderPdfFirstPageToBlob(file: File, maxWidth = 1400): Pro
     }, 'image/png');
   });
 }
+
+export async function renderAllPdfPagesToBlobs(file: File, maxWidth = 2048): Promise<Blob[]> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await (pdfjsLib as any).getDocument({ data: arrayBuffer }).promise;
+  const numPages = pdf.numPages;
+  
+  const blobs: Blob[] = [];
+  
+  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1.0 });
+    const scale = Math.min(2.0, maxWidth / viewport.width);
+    const scaledViewport = page.getViewport({ scale });
+    
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas 2D context not available');
+    
+    canvas.width = Math.ceil(scaledViewport.width);
+    canvas.height = Math.ceil(scaledViewport.height);
+    
+    const renderContext = { canvasContext: context, viewport: scaledViewport } as any;
+    await page.render(renderContext).promise;
+    
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error(`Failed to create PNG blob for page ${pageNum}`));
+      }, 'image/png');
+    });
+    
+    blobs.push(blob);
+  }
+  
+  return blobs;
+}

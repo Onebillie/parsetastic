@@ -70,6 +70,8 @@ serve(async (req) => {
     const file = formData.get('file') as File;
     const phone = formData.get('phone') as string;
     const autopilot = formData.get('autopilot') === 'true';
+    const isMultipage = formData.get('is_multipage') === 'true';
+    const pageUrls = formData.get('page_urls') as string | null;
     
     if (!file || !phone) {
       return new Response(
@@ -82,7 +84,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Upload file
+    // Upload file (original)
     const fileName = `${Date.now()}-${file.name}`;
     const { error: uploadError } = await supabase.storage
       .from('bills')
@@ -92,13 +94,24 @@ serve(async (req) => {
     
     const fileUrl = `${supabaseUrl}/storage/v1/object/public/bills/${fileName}`;
     
-    console.log(`[${new Date().toISOString()}] Starting optimized extraction pipeline for file: ${fileName}`);
+    console.log(`[${new Date().toISOString()}] Starting optimized extraction pipeline for file: ${fileName}`, {
+      isMultipage,
+      hasPageUrls: !!pageUrls
+    });
     
     // STEP 1: Direct extraction with GPT-5 (replaces parse + classify + extract)
     console.log('Calling mcp-parse...');
     const parseStart = Date.now();
+    
+    // Prepare headers for multipage documents
+    const parseHeaders: Record<string, string> = {};
+    if (isMultipage && pageUrls) {
+      parseHeaders['x-page-urls'] = pageUrls;
+    }
+    
     const parsed = await supabase.functions.invoke('mcp-parse', {
-      body: { file_url: fileUrl, file_type: file.type }
+      body: { file_url: fileUrl, file_type: file.type },
+      headers: parseHeaders
     });
     console.log(`Parse completed in ${Date.now() - parseStart}ms`);
     
