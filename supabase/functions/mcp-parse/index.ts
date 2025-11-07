@@ -39,6 +39,8 @@ const FULL_EXTRACTION_SCHEMA = {
       properties: {
         supplier_name: { type: ["string", "null"] },
         supplier_name_conf: { type: "number" },
+        vat_number: { type: ["string", "null"] },
+        vat_number_conf: { type: "number" },
         invoice_number: { type: ["string", "null"] },
         invoice_number_conf: { type: "number" },
         issue_date: { type: ["string", "null"] },
@@ -49,6 +51,8 @@ const FULL_EXTRACTION_SCHEMA = {
         billing_period_start_conf: { type: "number" },
         billing_period_end: { type: ["string", "null"] },
         billing_period_end_conf: { type: "number" },
+        payment_method: { type: ["string", "null"] },
+        payment_method_conf: { type: "number" },
       }
     },
     classification: {
@@ -66,6 +70,20 @@ const FULL_EXTRACTION_SCHEMA = {
         mprn_conf: { type: "number" },
         mcc_code: { type: ["string", "null"] },
         mcc_code_conf: { type: "number" },
+        dg_code: { type: ["string", "null"] },
+        dg_code_conf: { type: "number" },
+        profile_code: { type: ["string", "null"] },
+        profile_code_conf: { type: "number" },
+        tariff_name: { type: ["string", "null"] },
+        tariff_name_conf: { type: "number" },
+        contract_end_date: { type: ["string", "null"] },
+        contract_end_date_conf: { type: "number" },
+        meter_number: { type: ["string", "null"] },
+        meter_number_conf: { type: "number" },
+        multiplier: { type: ["number", "null"] },
+        multiplier_conf: { type: "number" },
+        reading_type: { type: ["string", "null"] },
+        reading_type_conf: { type: "number" },
         registers: {
           type: "array",
           items: {
@@ -89,6 +107,14 @@ const FULL_EXTRACTION_SCHEMA = {
         standing_charge_conf: { type: "number" },
         pso_levy: { type: ["number", "null"] },
         pso_levy_conf: { type: "number" },
+        discount_description: { type: ["string", "null"] },
+        discount_description_conf: { type: "number" },
+        discount_amount: { type: ["number", "null"] },
+        discount_amount_conf: { type: "number" },
+        discount_end_date: { type: ["string", "null"] },
+        discount_end_date_conf: { type: "number" },
+        microgen_credit: { type: ["number", "null"] },
+        microgen_credit_conf: { type: "number" },
         vat_rate: { type: ["number", "null"] },
         vat_rate_conf: { type: "number" },
         vat_amount: { type: ["number", "null"] },
@@ -127,8 +153,16 @@ const FULL_EXTRACTION_SCHEMA = {
     broadband_bill: {
       type: ["object", "null"],
       properties: {
+        phone_number: { type: ["string", "null"] },
+        phone_number_conf: { type: "number" },
+        account_holder_name: { type: ["string", "null"] },
+        account_holder_name_conf: { type: "number" },
+        service_description: { type: ["string", "null"] },
+        service_description_conf: { type: "number" },
         monthly_charge: { type: ["number", "null"] },
         monthly_charge_conf: { type: "number" },
+        vat_rate: { type: ["number", "null"] },
+        vat_rate_conf: { type: "number" },
         vat_amount: { type: ["number", "null"] },
         vat_amount_conf: { type: "number" },
         total_charges: { type: ["number", "null"] },
@@ -159,11 +193,24 @@ CONFIDENCE RULES:
 - 0.00-0.69: Missing or very uncertain (use null)
 
 FIELD RULES:
-- Dates: ISO format (YYYY-MM-DD)
-- Money: EUR with 2 decimals
-- MPRN: 10 digits starting with "10"
+- Dates: ISO format (YYYY-MM-DD). Examples: "29 Jul 26" → "2026-07-29", "31 March 2026" → "2026-03-31"
+- Money: EUR with 2 decimals. Credits shown as negative (e.g., -56.06)
+- MPRN: 11 digits with spaces, extract as digits only (e.g., "10 009 543 173" → "10009543173")
 - GPRN: 7 digits
 - Time bands: standard, day, night, peak, ev, nightboost, export
+- Meter numbers: Include any suffix (e.g., "_6608", "6858")
+- DG codes: Extract from "DG1", "DG2", etc.
+- MCC codes: Extract from patterns like "MCC12"
+- Profile codes: Extract numeric profile (e.g., "MCC12 1" → "1", "MCC12 27" → "27")
+- VAT numbers: Include full format (e.g., "IE 8F 52100V", "IE 3234061GH")
+- Address: Parse multi-line addresses into line1, line2, city, county, eircode. Example:
+  "MR FASI ULLAH / 15 DROMIN COURT / NENAGH / CO. TIPPERARY / E45 NW99"
+  → line1: "15 DROMIN COURT", line2: null, city: "NENAGH", county: "CO. TIPPERARY", eircode: "E45 NW99"
+- Tariff names: e.g., "EV Smart", "Home Electric + Saver", "1Yr Fixed Elec V4 Smart"
+- Discounts: Extract percentage and description (e.g., "Your Savings (30%)" → "Your Savings", amount: -71.75, end_date if available)
+- Microgen credit: Solar export credit shown on bill (negative value)
+- Payment method: "Direct Debit", "Cash", "Card", etc.
+- Reading type: "A" (Actual), "E" (Estimated), "C" (Customer)
 - Extract EVERY field, use null if not found
 
 CRITICAL: Be meticulous with numbers, dates, and identifiers. These are financial documents.`;
