@@ -45,39 +45,65 @@ serve(async (req) => {
 
     const systemPrompt = `You are an expert at extracting structured data from Irish utility bills (electricity, gas, broadband).
 
-CRITICAL EXTRACTION RULES:
-1. Extract ALL fields defined in the JSON schema - scan the entire document thoroughly
-2. For EVERY field, provide a confidence score (0.0-1.0) based on clarity and certainty
-3. If a field is not found or unclear, set value=null and confidence=0.0
-4. NEVER guess - low confidence is better than wrong data
-5. For money values: always use EUR with exactly 2 decimal places (e.g., 123.45)
-6. For dates: always use ISO-8601 format (YYYY-MM-DD)
-7. Canonical time bands for electricity: standard, day, night, peak, ev, nightboost, export, other
+CRITICAL: Documents may contain MULTIPLE bills (e.g., dual fuel = electricity + gas). Extract each service separately.
 
-IRISH UTILITY BILL SPECIFICS:
-- MPRN (electricity): 11-digit number, often near meter details
-- GPRN (gas): 7-digit number, often labeled "Gas Point Reference"
-- Eircode: Irish postcode format (e.g., D02 XY45, A94 K6P2)
-- VAT rate: typically 13.5% for energy, 23% for broadband in Ireland
-- PSO Levy: electricity-specific charge (look for "PSO" or "Public Service Obligation")
-- Carbon Tax: gas-specific charge
-- Common suppliers: Electric Ireland, Bord Gáis, SSE Airtricity, Energia, PrePayPower, Flogas, Virgin Media, Eir, Sky
-- Reading types: "Actual" (meter read), "Estimated" (calculated), "Customer" (self-submitted)
-- Tariffs: 24hr (single rate), Day/Night (dual rate), Smart tariff, PAYG (prepay)
+MULTI-BILL DETECTION:
+- Scan for service indicators: MPRN (electricity), GPRN (gas), UAN/phone numbers (broadband), MSISDN (phone)
+- Set services_details flags: electricity, gas, broadband, phone to true/false
+- Create separate bill entries in the bills array for EACH service found
+- Each bill gets its own complete extraction with all nested fields
+
+SUPPLIER MAPPING (use EXACT names from these lists):
+Electricity suppliers: Bord Gáis Energy, Community Power, Electric Ireland, Energia, Flogas, SSE Airtricity, Waterpower, Ecopower, Yuno energy
+Gas suppliers: Bord Gáis Energy, Community Power, Electric Ireland, Energia, Flogas, Pinergy, SSE Airtricity, Waterpower, Ecopower, Yuno energy
+Broadband suppliers: Pinergy, Pure Telecom, Eir - Broadband, Vodafone, Digiweb, Three, Cellnet, IFA Telecom, Rural Wifi, Sky Broadband, Virgin Media
+
+DG CODE MAPPING (for electricity):
+- If you see "DG1" anywhere → set account.dg: "132", account.dg_mapped_value: "132", account.dg_profile: "DG1"
+- If you see "DG2" anywhere → set account.dg: "131", account.dg_mapped_value: "131", account.dg_profile: "DG2"
+- Store raw text in electricity.dg_raw
+
+MCC CODE (for electricity): Look for MCC01, MCC02, or MCC12 - store in account.mcc
+
+EXTRACTION RULES:
+1. ALL fields default to "N/A" if not found (NOT null, NOT empty string - use "N/A")
+2. Money values: numeric strings with 2 decimals (e.g., "123.45")
+3. Dates: ISO-8601 (YYYY-MM-DD)
+4. Currency: always "EUR"
+5. Booleans: "true" or "false" as strings
+6. Arrays: populate all items found, empty array [] if none
+
+BARCODES & PAYMENT REFERENCES:
+- Look in payment slips, bottom of page, near "Pay by" sections
+- Extract IBAN, BIC from bank details or barcodes
+- Payment reference is critical - often on tear-off slip
+
+IRISH SPECIFICS:
+- MPRN: 11 digits (electricity meter)
+- GPRN: 7 digits (gas meter)
+- Eircode: format like D02 XY45, A94 K6P2
+- VAT: 13.5% energy, 23% broadband
+- PSO Levy: electricity only (look for "PSO" or "Public Service Obligation")
+- Carbon Tax: gas only
+- Reading types: Actual, Estimated, Customer
 
 EXTRACTION STRATEGY:
-1. Start with customer & supplier details (usually at top of bill)
-2. Identify document type from headers, logos, and MPRN/GPRN presence
-3. For electricity: look for meter register tables showing Day/Night/Peak readings
-4. For gas: find m³ to kWh conversion details and carbon tax line items
-5. Scan for all charges: unit charges, standing charges, discounts, levies, taxes
-6. Calculate totals from itemized charges if "Total" is unclear
-7. Look for payment reference numbers near payment instructions
-8. Check for contract end dates, discount expiry dates in fine print
+1. Scan ENTIRE document first to detect all bill types present
+2. Set services_details flags based on keywords: MPRN/DG/MCC (electricity), GPRN/carbon_tax (gas), UAN/broadband (broadband)
+3. For each service found, create a complete bill object in bills array
+4. Extract supplier details from headers/logos - map to exact supplier names
+5. Extract account holder name and addresses (billing vs premises)
+6. Find meter details: MPRN, GPRN, meter numbers, profile codes
+7. Extract billing period, invoice number, due dates
+8. Parse meter readings tables (registers for electricity, m³ for gas)
+9. Extract all charges: unit rates, standing charges, levies, taxes, discounts
+10. Calculate or extract totals - verify they match itemized charges
+11. Look for contract end dates, payment methods, barcodes
+12. Fill extraction_notes with any missing fields or anomalies detected
 
-${templateData ? `SUPPLIER-SPECIFIC TEMPLATE (use these patterns as hints for field locations):\n${JSON.stringify(templateData, null, 2)}\n` : ''}
+${templateData ? `SUPPLIER-SPECIFIC TEMPLATE (use these patterns as hints):\n${JSON.stringify(templateData, null, 2)}\n` : ''}
 
-COMPLETE SCHEMA TO EXTRACT:
+OUTPUT SCHEMA (return JSON matching this EXACTLY, all fields required):
 ${JSON.stringify(schemaData?.schema_definition || {}, null, 2)}`;
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -92,29 +118,32 @@ ${JSON.stringify(schemaData?.schema_definition || {}, null, 2)}`;
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Extract ALL fields from this ${classification.document_class} (${classification.document_subclass}) from ${classification.supplier_name}.
+            content: `Extract ALL fields from this document. Detected as ${classification.document_class} from ${classification.supplier_name}.
+
+CRITICAL INSTRUCTIONS:
+- This document may contain MULTIPLE bill types (electricity, gas, broadband, phone)
+- Scan the ENTIRE document and create separate bill entries for EACH service found
+- Use "N/A" for ALL missing fields (not null, not empty string)
+- Map supplier names to EXACT values from the predefined lists
+- For electricity: map DG codes correctly (DG1→132, DG2→131)
+- Extract MCC codes (MCC01, MCC02, MCC12) for electricity
+- Extract barcodes and payment references from payment slips
 
 DOCUMENT CONTENT:
 
-Text blocks (contains headers, labels, values):
+Text blocks (headers, labels, values, everything readable):
 ${JSON.stringify(blocks, null, 2)}
 
-Tables (structured data like meter readings, charges):
+Tables (structured data - meter readings, charges breakdown):
 ${JSON.stringify(tables, null, 2)}
 
-EXTRACTION REQUIREMENTS:
-- Return the complete JSON structure matching the schema exactly
-- Populate ALL fields defined in the schema (use null for missing data)
-- Include confidence scores (0.0-1.0) for EVERY field with a "_conf" suffix
-- Scan all text blocks and tables methodically - don't miss fields
-- For registers/arrays, include all rows found (e.g., all meter readings for Day/Night tariffs)
-- Confidence scoring guide:
-  * 1.0 = clearly labeled and unambiguous (e.g., "MPRN: 10123456789")
-  * 0.8-0.9 = very likely correct but not perfectly labeled
-  * 0.5-0.7 = reasonable inference from context
-  * 0.3-0.4 = weak inference or unclear
-  * 0.0-0.2 = not found or pure guess
-- Double-check: totals, dates, meter numbers, account numbers, MPRNs/GPRNs, charges`
+RETURN FORMAT:
+- Complete JSON matching the schema EXACTLY
+- ALL fields present with "N/A" for missing data
+- services_details: set true/false for each service type found
+- bills array: one complete bill object per service detected
+- Each bill includes: supplier, document, account, billing, totals, charges_breakdown, discounts, taxes_and_levies, and service-specific sections
+- extraction_notes: list any fields_missing or anomalies_detected`
           }
         ],
         response_format: { type: 'json_object' }

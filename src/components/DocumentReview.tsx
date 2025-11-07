@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, AlertCircle, Edit2, Save, ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { MultiBillReview } from "./MultiBillReview";
 
 interface DocumentReviewProps {
   documentId: string;
@@ -47,10 +48,11 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
       // Auto-expand sections with data
       const sections: Record<string, boolean> = {};
       const ext = data.parsed_data?.extracted || {};
-      if (ext.customer_details?.customer_name || data.parsed_data?.bills?.cus_details?.[0]?.details?.customer_name) sections['customer'] = true;
-      if (ext.electricity_bill?.mprn || data.parsed_data?.bills?.electricity?.[0]) sections['electricity'] = true;
-      if (ext.gas_bill?.gprn || data.parsed_data?.bills?.gas?.[0]) sections['gas'] = true;
-      if (ext.broadband_bill?.account_number || data.parsed_data?.bills?.broadband?.[0]) sections['broadband'] = true;
+      // Check both old and new format
+      if (ext.customer_details?.customer_name || data.parsed_data?.bills?.[0]?.account?.account_holder_name) sections['customer'] = true;
+      if (ext.electricity_bill?.mprn || data.parsed_data?.services_details?.electricity) sections['electricity'] = true;
+      if (ext.gas_bill?.gprn || data.parsed_data?.services_details?.gas) sections['gas'] = true;
+      if (ext.broadband_bill?.account_number || data.parsed_data?.services_details?.broadband) sections['broadband'] = true;
       setExpandedSections(sections);
     } catch (error) {
       console.error('Error fetching document:', error);
@@ -263,6 +265,9 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
   const broadbandBill = extracted.broadband_bill || bills.broadband?.[0];
   const paymentDetails = extracted.payment_details || {};
 
+  // Detect if this is new multi-bill format
+  const isMultiBillFormat = document.parsed_data?.bills && Array.isArray(document.parsed_data.bills);
+
   return (
     <div className="grid grid-cols-3 gap-4 h-screen p-4">
       {/* Document Viewer */}
@@ -333,6 +338,26 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
         <CardHeader>
           <CardTitle className="text-base">Extracted Fields</CardTitle>
           <div className="flex gap-2">
+            {corrections.length > 0 && (
+              <Badge variant="secondary">{corrections.length} edited</Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[calc(100vh-200px)]">
+            {isMultiBillFormat ? (
+              <MultiBillReview
+                parsedData={document.parsed_data}
+                onEdit={(path, value) => {
+                  setEditedData((prev: any) => setNestedValue(prev, path, value));
+                  setCorrections([...corrections, { field_path: path, original_value: getNestedValue(document.parsed_data, path), corrected_value: value, confidence_before: 0 }]);
+                }}
+                editedData={editedData}
+                isEditing={(path) => editing === path}
+              />
+            ) : (
+              <div className="space-y-2">
+                {/* Old format rendering - keep existing code */}
             <Button onClick={handleApprove} className="flex-1">
               <CheckCircle className="mr-2 h-4 w-4" />
               Approve
