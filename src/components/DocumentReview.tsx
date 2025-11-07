@@ -102,13 +102,28 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
 
       if (!response.ok) throw new Error('Approval failed');
 
+      const result = await response.json();
+      
+      // Show result with OneBill status
+      let description = corrections.length > 0 
+        ? `${corrections.length} corrections saved for training. `
+        : "Document approved successfully. ";
+      
+      if (result.onebill_sent) {
+        description += "✓ Sent to OneBill API";
+      } else if (result.onebill_error) {
+        description += `⚠️ OneBill API error: ${result.onebill_error}`;
+      }
+
       toast({
-        title: "Document Approved",
-        description: corrections.length > 0 
-          ? `${corrections.length} corrections saved for training`
-          : "Document approved successfully",
+        title: result.onebill_sent ? "Document Approved & Sent to OneBill" : "Document Approved",
+        description,
+        variant: result.onebill_error ? "destructive" : "default",
       });
 
+      // Refresh document to show OneBill response
+      await fetchDocument();
+      
       onApprove?.();
     } catch (error) {
       console.error('Error approving document:', error);
@@ -465,6 +480,42 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
                     {corrections.length} field{corrections.length !== 1 ? 's' : ''} edited
                   </span>
                 </div>
+              </div>
+            )}
+            
+            {/* OneBill API Status */}
+            {document.parsed_data?.onebill_response && (
+              <div className="mt-4 p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                <div className="flex items-center gap-2 text-sm mb-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="text-green-900 dark:text-green-100 font-medium">
+                    Sent to OneBill API
+                  </span>
+                </div>
+                <div className="text-xs text-green-700 dark:text-green-300 font-mono">
+                  {document.parsed_data.onebill_sent_at && (
+                    <div>Sent: {new Date(document.parsed_data.onebill_sent_at).toLocaleString()}</div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {document.parsed_data?.onebill_error && (
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg">
+                <div className="flex items-center gap-2 text-sm mb-2">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <span className="text-red-900 dark:text-red-100 font-medium">
+                    OneBill API Error
+                  </span>
+                </div>
+                <div className="text-xs text-red-700 dark:text-red-300">
+                  {document.parsed_data.onebill_error}
+                </div>
+                {document.parsed_data.onebill_attempted_at && (
+                  <div className="text-xs text-red-600 dark:text-red-400 mt-1">
+                    Attempted: {new Date(document.parsed_data.onebill_attempted_at).toLocaleString()}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
