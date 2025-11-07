@@ -357,15 +357,6 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
               />
             ) : (
               <div className="space-y-2">
-                {/* Old format rendering - keep existing code */}
-            <Button onClick={handleApprove} className="flex-1">
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Approve
-            </Button>
-          </div>
-        </CardHeader>
-        <ScrollArea className="h-[calc(100vh-200px)]">
-          <CardContent className="space-y-2">
             {/* Customer Details */}
             {renderSection(
               "Customer Details",
@@ -587,8 +578,10 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
                 )}
               </div>
             )}
-          </CardContent>
-        </ScrollArea>
+              </div>
+            )}
+          </ScrollArea>
+        </CardContent>
       </Card>
 
       {/* JSON View */}
