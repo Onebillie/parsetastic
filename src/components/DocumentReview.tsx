@@ -334,7 +334,7 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
       </Card>
 
       {/* Fields Editor */}
-      <Card className="col-span-1">
+      <Card className="col-span-1 flex flex-col">
         <CardHeader>
           <CardTitle className="text-base">Extracted Fields</CardTitle>
           <div className="flex gap-2">
@@ -343,8 +343,8 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
             )}
           </div>
         </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[calc(100vh-200px)]">
+        <CardContent className="flex-1 flex flex-col">
+          <ScrollArea className="flex-1 h-[calc(100vh-250px)]">
             {isMultiBillFormat ? (
               <MultiBillReview
                 parsedData={document.parsed_data}
@@ -581,6 +581,12 @@ export const DocumentReview = ({ documentId, onApprove }: DocumentReviewProps) =
               </div>
             )}
           </ScrollArea>
+          <div className="pt-4 border-t border-border mt-4">
+            <Button onClick={handleApprove} className="w-full" size="lg">
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Approve Document
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
