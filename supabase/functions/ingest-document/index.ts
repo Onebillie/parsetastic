@@ -116,13 +116,18 @@ serve(async (req) => {
     
     // Upload file (original)
     const fileName = `${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('bills')
       .upload(fileName, file, { contentType: file.type, upsert: true });
     
     if (uploadError) throw uploadError;
     
-    const fileUrl = `${supabaseUrl}/storage/v1/object/public/bills/${fileName}`;
+    // Use proper getPublicUrl method
+    const { data: urlData } = supabase.storage
+      .from('bills')
+      .getPublicUrl(fileName);
+    
+    const fileUrl = urlData.publicUrl;
     
     console.log(`[${new Date().toISOString()}] Starting optimized extraction pipeline for file: ${fileName}`, {
       isMultipage,
