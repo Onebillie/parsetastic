@@ -33,31 +33,105 @@ function calculateOverallConfidence(extracted: any): number {
 
 // transformToOneBillFormat is now imported from _shared/transform-to-onebill.ts
 
-// Make the POST request to OneBill API
-async function callOneBillAPI(transformedData: any, phoneNumber: string): Promise<any> {
+// Make the POST request to OneBill API with file upload
+async function callOneBillAPI(fileUrl: string, fileName: string, parsedData: any, phoneNumber: string): Promise<any> {
   const onebillApiKey = Deno.env.get('ONEBILL_API_KEY');
   if (!onebillApiKey) throw new Error('ONEBILL_API_KEY not configured');
 
-  console.log('Calling OneBill API with data (autopilot):', JSON.stringify(transformedData));
+  // Download the file
+  console.log('Downloading file from:', fileUrl);
+  const fileResponse = await fetch(fileUrl);
+  if (!fileResponse.ok) {
+    throw new Error(`Failed to download file: ${fileResponse.status}`);
+  }
+  const fileBlob = await fileResponse.blob();
 
-  const response = await fetch('https://api.onebill.ie/api/v2/bills', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${onebillApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ phone: phoneNumber, ...transformedData }),
-  });
+  const results: any[] = [];
+  const errors: any[] = [];
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('OneBill API error (autopilot):', response.status, errorText);
-    throw new Error(`OneBill API failed: ${response.status} - ${errorText}`);
+  const extracted = parsedData?.extracted || parsedData;
+  const servicesDetails = extracted?.services_details || {};
+  const bills = extracted?.bills || [];
+
+  // Send to electricity endpoint if electricity bill present
+  if (servicesDetails.electricity === "true" || servicesDetails.electricity === true) {
+    try {
+      const electricityBill = bills.find((b: any) =>
+        b.bill_type?.toLowerCase().includes('electric') || b.account?.mprn !== "N/A"
+      );
+
+      if (electricityBill) {
+        const formData = new FormData();
+        formData.append('file', fileBlob, fileName);
+        formData.append('phone', phoneNumber);
+        formData.append('mprn', electricityBill.account?.mprn || '');
+        formData.append('mcc_type', electricityBill.account?.mcc || '');
+        formData.append('dg_type', electricityBill.account?.dg || electricityBill.account?.dg_mapped_value || '');
+
+        console.log('Sending electricity file to OneBill API (autopilot)...');
+        const response = await fetch('https://api.onebill.ie/api/electricity-file', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${onebillApiKey}` },
+          body: formData,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          results.push({ type: 'electricity', result });
+          console.log('Electricity API success (autopilot):', result);
+        } else {
+          const errorText = await response.text();
+          errors.push({ type: 'electricity', error: errorText, status: response.status });
+          console.error('Electricity API error (autopilot):', response.status, errorText.slice(0, 500));
+        }
+      }
+    } catch (error: any) {
+      errors.push({ type: 'electricity', error: error.message });
+      console.error('Electricity API exception (autopilot):', error);
+    }
   }
 
-  const result = await response.json();
-  console.log('OneBill API response (autopilot):', result);
-  return result;
+  // Send to gas endpoint if gas bill present
+  if (servicesDetails.gas === "true" || servicesDetails.gas === true) {
+    try {
+      const gasBill = bills.find((b: any) =>
+        b.bill_type?.toLowerCase().includes('gas') || b.account?.gprn !== "N/A"
+      );
+
+      if (gasBill) {
+        const formData = new FormData();
+        formData.append('file', fileBlob, fileName);
+        formData.append('phone', phoneNumber);
+        formData.append('gprn', gasBill.account?.gprn || '');
+
+        console.log('Sending gas file to OneBill API (autopilot)...');
+        const response = await fetch('https://api.onebill.ie/api/gas-file', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${onebillApiKey}` },
+          body: formData,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          results.push({ type: 'gas', result });
+          console.log('Gas API success (autopilot):', result);
+        } else {
+          const errorText = await response.text();
+          errors.push({ type: 'gas', error: errorText, status: response.status });
+          console.error('Gas API error (autopilot):', response.status, errorText.slice(0, 500));
+        }
+      }
+    } catch (error: any) {
+      errors.push({ type: 'gas', error: error.message });
+      console.error('Gas API exception (autopilot):', error);
+    }
+  }
+
+  if (errors.length > 0 && results.length === 0) {
+    throw new Error(`All OneBill API calls failed: ${JSON.stringify(errors)}`);
+  }
+
+  return { success: results.length > 0, results, errors: errors.length > 0 ? errors : undefined };
 }
 
 // Trigger webhooks
@@ -341,9 +415,8 @@ serve(async (req) => {
     let onebillResult: any = null;
     let onebillError: string | null = null;
     try {
-      const transformed = transformToOneBillFormat(extractedData, phone);
-      console.log('Autopilot: sending to OneBill API...');
-      onebillResult = await callOneBillAPI(transformed, phone);
+      console.log('Autopilot: sending file to OneBill API...');
+      onebillResult = await callOneBillAPI(fileUrl, file.name, { extracted: extractedData }, phone);
 
       // Persist OneBill response on the document
       await supabase
