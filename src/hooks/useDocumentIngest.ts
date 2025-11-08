@@ -58,11 +58,14 @@ export const useDocumentIngest = () => {
             
             if (uploadError) throw uploadError;
             
-            const { data: urlData } = supabase.storage
+            // Create signed URL valid for 10 minutes
+            const { data: signedData, error: signError } = await supabase.storage
               .from('bills-converted')
-              .getPublicUrl(uploadData.path);
+              .createSignedUrl(uploadData.path, 600);
             
-            uploadedUrls.push(urlData.publicUrl);
+            if (signError) throw signError;
+            
+            uploadedUrls.push(signedData.signedUrl);
           }
           
           formData.append('page_urls', JSON.stringify(uploadedUrls));

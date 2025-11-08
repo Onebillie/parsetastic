@@ -122,12 +122,17 @@ serve(async (req) => {
     
     if (uploadError) throw uploadError;
     
-    // Use proper getPublicUrl method
-    const { data: urlData } = supabase.storage
+    // Create signed URL valid for 10 minutes (enough for parsing)
+    const { data: signedData, error: signError } = await supabase.storage
       .from('bills')
-      .getPublicUrl(fileName);
+      .createSignedUrl(fileName, 600);
     
-    const fileUrl = urlData.publicUrl;
+    if (signError) {
+      console.error('Failed to create signed URL:', signError);
+      throw signError;
+    }
+    
+    const fileUrl = signedData.signedUrl;
     
     console.log(`[${new Date().toISOString()}] Starting optimized extraction pipeline for file: ${fileName}`, {
       isMultipage,
