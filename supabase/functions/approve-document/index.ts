@@ -9,161 +9,39 @@ const corsHeaders = {
 
 // transformToOneBillFormat is now imported from _shared/transform-to-onebill.ts
 
-// Call OneBill API with file upload
+// Call OneBill API with JSON payload (v2)
 async function callOneBillAPI(
-  fileUrl: string, 
-  fileName: string,
-  parsedData: any, 
+  transformedData: any,
   phoneNumber: string
 ): Promise<any> {
   const onebillApiKey = Deno.env.get('ONEBILL_API_KEY');
-  
-  if (!onebillApiKey) {
-    throw new Error('ONEBILL_API_KEY not configured');
+  if (!onebillApiKey) throw new Error('ONEBILL_API_KEY not configured');
+
+  console.log('Calling OneBill API with data (approval):', JSON.stringify(transformedData)?.slice(0, 1000));
+
+  const response = await fetch('https://api.onebill.ie/api/v2/bills', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${onebillApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ phone: phoneNumber, ...transformedData }),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    console.error('OneBill API error (approval):', response.status, text.slice(0, 2000));
+    throw new Error(`OneBill API failed: ${response.status} - ${text.slice(0, 5000)}`);
   }
 
-  // Download the file from Supabase storage
-  console.log('Downloading file from:', fileUrl);
-  const fileResponse = await fetch(fileUrl);
-  if (!fileResponse.ok) {
-    throw new Error(`Failed to download file: ${fileResponse.status}`);
-  }
-  const fileBlob = await fileResponse.blob();
-  
-  const results: any[] = [];
-  const errors: any[] = [];
-  
-  // Detect bill types present in the document
-  const servicesDetails = parsedData?.services_details || {};
-  const bills = parsedData?.bills || [];
-  
-  // Send to electricity endpoint if electricity bill present
-  if (servicesDetails.electricity === "true" || servicesDetails.electricity === true) {
-    try {
-      const electricityBill = bills.find((b: any) => 
-        b.bill_type?.toLowerCase().includes('electric') || b.account?.mprn !== "N/A"
-      );
-      
-      if (electricityBill) {
-        const formData = new FormData();
-        formData.append('file', fileBlob, fileName);
-        formData.append('phone', phoneNumber);
-        formData.append('mprn', electricityBill.account?.mprn || '');
-        formData.append('mcc_type', electricityBill.account?.mcc || '');
-        formData.append('dg_type', electricityBill.account?.dg || electricityBill.account?.dg_mapped_value || '');
-        
-        console.log('Sending electricity file to OneBill API...');
-        const response = await fetch('https://api.onebill.ie/api/electricity-file', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${onebillApiKey}`,
-          },
-          body: formData,
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          results.push({ type: 'electricity', result });
-          console.log('Electricity API success:', result);
-        } else {
-          const errorText = await response.text();
-          errors.push({ type: 'electricity', error: errorText, status: response.status });
-          console.error('Electricity API error:', response.status, errorText);
-        }
-      }
-    } catch (error: any) {
-      errors.push({ type: 'electricity', error: error.message });
-      console.error('Electricity API exception:', error);
-    }
-  }
-  
-  // Send to gas endpoint if gas bill present
-  if (servicesDetails.gas === "true" || servicesDetails.gas === true) {
-    try {
-      const gasBill = bills.find((b: any) => 
-        b.bill_type?.toLowerCase().includes('gas') || b.account?.gprn !== "N/A"
-      );
-      
-      if (gasBill) {
-        const formData = new FormData();
-        formData.append('file', fileBlob, fileName);
-        formData.append('phone', phoneNumber);
-        formData.append('gprn', gasBill.account?.gprn || '');
-        
-        console.log('Sending gas file to OneBill API...');
-        const response = await fetch('https://api.onebill.ie/api/gas-file', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${onebillApiKey}`,
-          },
-          body: formData,
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          results.push({ type: 'gas', result });
-          console.log('Gas API success:', result);
-        } else {
-          const errorText = await response.text();
-          errors.push({ type: 'gas', error: errorText, status: response.status });
-          console.error('Gas API error:', response.status, errorText);
-        }
-      }
-    } catch (error: any) {
-      errors.push({ type: 'gas', error: error.message });
-      console.error('Gas API exception:', error);
-    }
-  }
-  
-  // Send to broadband endpoint if broadband bill present
-  if (servicesDetails.broadband === "true" || servicesDetails.broadband === true) {
-    try {
-      const broadbandBill = bills.find((b: any) => 
-        b.bill_type?.toLowerCase().includes('broadband') || 
-        b.bill_type?.toLowerCase().includes('internet') ||
-        b.broadband_specific?.service_numbers
-      );
-      
-      if (broadbandBill) {
-        const formData = new FormData();
-        formData.append('file', fileBlob, fileName);
-        formData.append('phone', phoneNumber);
-        
-        console.log('Sending broadband file to OneBill API...');
-        const response = await fetch('https://api.onebill.ie/api/broadband-file', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${onebillApiKey}`,
-          },
-          body: formData,
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          results.push({ type: 'broadband', result });
-          console.log('Broadband API success:', result);
-        } else {
-          const errorText = await response.text();
-          errors.push({ type: 'broadband', error: errorText, status: response.status });
-          console.error('Broadband API error:', response.status, errorText);
-        }
-      }
-    } catch (error: any) {
-      errors.push({ type: 'broadband', error: error.message });
-      console.error('Broadband API exception:', error);
-    }
-  }
-  
-  // Return results and errors
-  if (errors.length > 0 && results.length === 0) {
-    throw new Error(`All OneBill API calls failed: ${JSON.stringify(errors)}`);
-  }
-  
-  return {
-    success: results.length > 0,
-    results,
-    errors: errors.length > 0 ? errors : undefined
-  };
+  const result = safeJsonParse(text);
+  console.log('OneBill API response (approval):', typeof result === 'string' ? result.slice(0, 500) : result);
+  return result;
+}
+
+// small helper since sometimes response might be plain text
+function safeJsonParse(text: string) {
+  try { return JSON.parse(text); } catch { return text; }
 }
 
 // Trigger webhooks
@@ -270,11 +148,11 @@ serve(async (req) => {
     try {
       const finalData = edited_data || originalDoc.parsed_data;
       
-      console.log('Sending file to OneBill API...');
+      console.log('Transforming data and sending JSON to OneBill API...');
+      const payloadSource = finalData?.extracted ?? finalData;
+      const transformed = transformToOneBillFormat(payloadSource, originalDoc.phone_number);
       onebillResult = await callOneBillAPI(
-        originalDoc.file_url,
-        originalDoc.filename || 'bill.pdf',
-        finalData,
+        transformed,
         originalDoc.phone_number
       );
       console.log('OneBill API success:', onebillResult);
