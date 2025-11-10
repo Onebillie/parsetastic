@@ -906,20 +906,64 @@ serve(async (req) => {
       });
     }
 
-    // Call all OneBill API endpoints
+    // Download the file first for FormData submission
     const MAX_ERROR_LENGTH = 4096;
+    let fileBlob: Blob | null = null;
+    let fileName = 'bill.pdf';
+    
+    try {
+      console.log('Downloading file from:', fileUrl);
+      const fileResponse = await fetch(fileUrl);
+      if (!fileResponse.ok) {
+        throw new Error(`Failed to download file: ${fileResponse.status}`);
+      }
+      fileBlob = await fileResponse.blob();
+      
+      // Extract filename from URL or use a default
+      const urlParts = fileUrl.split('/');
+      const fileNameFromUrl = urlParts[urlParts.length - 1].split('?')[0];
+      if (fileNameFromUrl) {
+        fileName = fileNameFromUrl;
+      }
+    } catch (e) {
+      console.error('Failed to download file for OneBill submission:', e);
+    }
+
+    // Call all OneBill API endpoints with FormData + file
     const apiResults = await Promise.all(
       apiCalls.map(async ({ endpoint, type }) => {
         try {
           console.log(`Calling ${type} API:`, endpoint);
           
+          if (!fileBlob) {
+            throw new Error('File not available for submission');
+          }
+
+          const formData = new FormData();
+          formData.append('file', fileBlob, fileName);
+          formData.append('phone', phone);
+
+          // Add type-specific fields
+          if (type === 'electricity') {
+            const elecBill = parsedData.bills.electricity?.[0];
+            if (elecBill) {
+              formData.append('mprn', elecBill.electricity_details?.meter_details?.mprn || '');
+              formData.append('mcc_type', elecBill.electricity_details?.meter_details?.mcc || '');
+              formData.append('dg_type', elecBill.electricity_details?.meter_details?.dg || '');
+            }
+          } else if (type === 'gas') {
+            const gasBill = parsedData.bills.gas?.[0];
+            if (gasBill) {
+              formData.append('gprn', gasBill.gas_details?.meter_details?.gprn || '');
+            }
+          }
+          
           const apiResponse = await fetch(endpoint, {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${ONEBILL_API_KEY}`,
-              "Content-Type": "application/json"
+              "Authorization": `Bearer ${ONEBILL_API_KEY}`
             },
-            body: JSON.stringify(parsedData)
+            body: formData
           });
 
           let responseText = "";
