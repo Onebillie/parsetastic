@@ -83,10 +83,20 @@ export const useBillParser = () => {
 
       setProgressStep("complete");
       setResult(data);
-      toast({
-        title: "Success",
-        description: data.ok ? "Sent to ONEBILL API successfully!" : "Parsed but API call failed"
-      });
+      if (data.ok) {
+        toast({
+          title: "Legacy parser",
+          description: "Sent to OneBill successfully."
+        });
+      } else {
+        const failed = Array.isArray(data.api_calls) ? data.api_calls.filter((c: any) => !c.ok) : [];
+        const statusText = failed.length ? ` (${failed.map((f: any) => `${f.type}:${f.status}`).join(", ")})` : "";
+        toast({
+          title: "Legacy parser error",
+          description: `Parsed, but OneBill API failed${statusText}`,
+          variant: "destructive"
+        });
+      }
 
       setTimeout(() => setProgressStep("idle"), 2000);
     } catch (error: any) {
